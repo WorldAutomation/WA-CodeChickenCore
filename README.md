@@ -1,14 +1,9 @@
-CodeChickenCore
+WA-CodeChickenCore
 ==============
-THIS PROJECT IS RETIRED: See [here] for the current repo.
+Orginal Source: [here].
 
 This is the core of all ChickenBones mods.
 
-Current maven: http://chickenbones.net/maven/
-
-Join us on IRC:
-- Server: Esper.net
-- Channel: #ChickenBones
-
+Modified to remove the broken update notification for legacy MC versions.
 
 [here]: <https://github.com/TheCBProject/CodeChickenCore>
