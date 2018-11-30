@@ -5,7 +5,8 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.Map.Entry;
 
-import net.minecraftforge.fml.relauncher.IFMLLoadingPlugin;
+import codechicken.lib.asm.ASMInit;
+import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 import net.minecraft.launchwrapper.Launch;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -23,13 +24,17 @@ import codechicken.lib.asm.ObfMapping;
 import codechicken.obfuscator.IHeirachyEvaluator;
 import codechicken.obfuscator.ObfuscationRun;
 import codechicken.obfuscator.ObfuscationMap.ObfuscationEntry;
-import net.minecraftforge.fml.common.asm.transformers.AccessTransformer;
+import cpw.mods.fml.common.asm.transformers.AccessTransformer;
 
 import net.minecraft.launchwrapper.IClassTransformer;
 import net.minecraft.launchwrapper.LaunchClassLoader;
 
 public class MCPDeobfuscationTransformer implements IClassTransformer, Opcodes, IHeirachyEvaluator
 {
+    static {
+        ASMInit.init();
+    }
+
     public static class LoadPlugin implements IFMLLoadingPlugin
     {
         @Override
@@ -131,7 +136,7 @@ public class MCPDeobfuscationTransformer implements IClassTransformer, Opcodes, 
 
     @Override
     public byte[] transform(String name, String transformedName, byte[] bytes) {
-        if (name.equals("net.minecraftforge.fml.common.Loader")) {
+        if (name.equals("cpw.mods.fml.common.Loader")) {
             bytes = injectCallback(bytes);
             activated = true;
         }
@@ -198,14 +203,15 @@ public class MCPDeobfuscationTransformer implements IClassTransformer, Opcodes, 
 
     @Override
     public List<String> getParents(ObfuscationEntry desc) {
+        String name = ObfMapping.obfuscated ? desc.obf.s_owner : desc.mcp.s_owner;
+        name = name.replace('/', '.');
         try {
-            String name = ObfMapping.obfuscated ? desc.obf.s_owner : desc.mcp.s_owner;
-            name = name.replace('/', '.');
             byte[] bytes = Launch.classLoader.getClassBytes(name);
             if (bytes != null)
                 return ObfuscationRun.getParents(ASMHelper.createClassNode(bytes));
-        } catch (IOException e) {
-        }
+        } catch (IOException ignored) {}
+        //clear the miss cache because the library containing it might be loaded later
+        Launch.classLoader.clearNegativeEntries(Collections.singleton(name));
         return null;
     }
 

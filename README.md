@@ -1,6 +1,6 @@
 WA-CodeChickenCore
 ==============
-Orginal Source: [here].
+Orginal Source [here].
 
 This is the core of all ChickenBones mods.
 

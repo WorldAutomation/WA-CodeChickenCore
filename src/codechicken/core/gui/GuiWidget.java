@@ -53,7 +53,7 @@ public class GuiWidget extends Gui
     {
     }
 
-    public void mouseReleased(int x, int y, int button)
+    public void mouseMovedOrUp(int x, int y, int button)
     {
     }
     
@@ -82,6 +82,6 @@ public class GuiWidget extends Gui
         Minecraft mc = Minecraft.getMinecraft();
         parentScreen = s;
         renderEngine = mc.renderEngine;
-        fontRenderer = mc.fontRendererObj;
+        fontRenderer = mc.fontRenderer;
     }
 }

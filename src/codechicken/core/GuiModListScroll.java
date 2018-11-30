@@ -2,18 +2,21 @@ package codechicken.core;
 
 import codechicken.core.launch.CodeChickenCorePlugin;
 import codechicken.lib.gui.GuiDraw;
-import codechicken.lib.render.RenderUtils;
 import codechicken.lib.vec.Rectangle4i;
-import net.minecraft.client.renderer.GlStateManager;
-import net.minecraftforge.fml.client.GuiModList;
-import net.minecraftforge.fml.common.FMLCommonHandler;
-import net.minecraftforge.fml.common.ModContainer;
-import net.minecraftforge.fml.common.ModMetadata;
+import cpw.mods.fml.client.GuiModList;
+import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.ModContainer;
+import cpw.mods.fml.common.ModMetadata;
 import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.client.MinecraftForgeClient;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.opengl.GL11;
 
 import javax.imageio.ImageIO;
+
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL11.glReadPixels;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -22,8 +25,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
-
-import static org.lwjgl.opengl.GL11.*;
 
 public class GuiModListScroll
 {
@@ -34,7 +35,7 @@ public class GuiModListScroll
     }
 
     private static void register(ModContainer mod) {
-        if (!RenderUtils.checkEnableStencil())
+        if (MinecraftForgeClient.getStencilBits() == 0)
             CodeChickenCorePlugin.logger.error("Unable to do mod description scrolling due to lack of stencil buffer");
         else
             scrollMods.add(mod);
@@ -82,7 +83,7 @@ public class GuiModListScroll
 
         glEnable(GL_STENCIL_TEST);
         glStencilFunc(GL_ALWAYS, 1, 1);
-        GlStateManager.colorMask(false, false, false, false);
+        glColorMask(false, false, false, false);
         glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
         GuiDraw.drawRect(0, 0, gui.width, gui.height, -1);//clear stencil buffer
 
@@ -95,13 +96,13 @@ public class GuiModListScroll
 
         screenshotStencil(2);
 
-        GlStateManager.colorMask(true, true, true, true);
+        glColorMask(true, true, true, true);
         glStencilFunc(GL_EQUAL, 1, 1);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
         gui.drawDefaultBackground();//fill stencil with background
 
-        GlStateManager.colorMask(false, false, false, false);
+        glColorMask(false, false, false, false);
         glStencilOp(GL_ZERO, GL_ZERO, GL_ZERO);
         GuiDraw.drawRect(0, 0, gui.width, gui.height, -1);
         glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
@@ -109,7 +110,7 @@ public class GuiModListScroll
 
         screenshotStencil(3);
 
-        GlStateManager.colorMask(true, true, true, true);
+        glColorMask(true, true, true, true);
         glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 
         String description = selectedMod.getMetadata().description;
@@ -130,14 +131,14 @@ public class GuiModListScroll
         //draw description
 
         double dy = scroll % (height + 20);
-        GlStateManager.pushMatrix();
-            GlStateManager.translate(0, -dy, 0);
+        GL11.glPushMatrix();
+            GL11.glTranslated(0, -dy, 0);
             GuiDraw.fontRenderer.drawSplitString(description, x1, y1draw, x2-x1, 0xDDDDDD);
             if(needsScroll) {
-                GlStateManager.translate(0, height + 20, 0);
+                GL11.glTranslated(0, height + 20, 0);
                 GuiDraw.fontRenderer.drawSplitString(description, x1, y1draw, x2 - x1, 0xDDDDDD);
             }
-        GlStateManager.popMatrix();
+        GL11.glPopMatrix();
 
         glDisable(GL_STENCIL_TEST);
     }

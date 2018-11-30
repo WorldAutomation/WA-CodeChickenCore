@@ -2,6 +2,7 @@ package codechicken.core.asm;
 
 import java.util.Iterator;
 
+import codechicken.lib.asm.ASMInit;
 import net.minecraft.launchwrapper.Launch;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AnnotationNode;
@@ -14,6 +15,10 @@ import net.minecraft.launchwrapper.IClassTransformer;
 
 public class InterfaceDependancyTransformer implements IClassTransformer
 {
+    static {
+        ASMInit.init();
+    }
+
     @Override
     public byte[] transform(String name, String tname, byte[] bytes) {
         if (bytes == null) return null;

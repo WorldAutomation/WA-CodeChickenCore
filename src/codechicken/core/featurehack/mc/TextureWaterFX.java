@@ -2,8 +2,8 @@ package codechicken.core.featurehack.mc;
 
 import codechicken.lib.colour.ColourRGBA;
 import codechicken.lib.render.TextureFX;
-import net.minecraftforge.fml.relauncher.Side;
-import net.minecraftforge.fml.relauncher.SideOnly;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 @SideOnly(Side.CLIENT)
 public class TextureWaterFX extends TextureFX

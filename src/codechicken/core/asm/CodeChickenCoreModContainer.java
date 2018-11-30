@@ -4,7 +4,7 @@ import java.io.File;
 import java.util.LinkedList;
 import java.util.List;
 
-import codechicken.core.CCUpdateChecker;
+import codechicken.core.ClientUtils;
 import codechicken.core.featurehack.LiquidTextures;
 import codechicken.core.internal.CCCEventHandler;
 import codechicken.core.launch.CodeChickenCorePlugin;
@@ -13,12 +13,12 @@ import codechicken.lib.config.ConfigFile;
 import com.google.common.eventbus.EventBus;
 import com.google.common.eventbus.Subscribe;
 
-import net.minecraftforge.fml.common.*;
-import net.minecraftforge.fml.common.event.FMLInitializationEvent;
-import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
-import net.minecraftforge.fml.common.versioning.ArtifactVersion;
-import net.minecraftforge.fml.common.versioning.VersionParser;
-import net.minecraftforge.fml.common.versioning.VersionRange;
+import cpw.mods.fml.common.*;
+import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.versioning.ArtifactVersion;
+import cpw.mods.fml.common.versioning.VersionParser;
+import cpw.mods.fml.common.versioning.VersionRange;
 import net.minecraftforge.common.MinecraftForge;
 
 public class CodeChickenCoreModContainer extends DummyModContainer
@@ -38,11 +38,12 @@ public class CodeChickenCoreModContainer extends DummyModContainer
     public List<ArtifactVersion> getDependants() {
         LinkedList<ArtifactVersion> deps = new LinkedList<ArtifactVersion>();
         if(!getVersion().contains("$")) {
+            deps.add(VersionParser.parseVersionReference("Forge@[10.13.3,)"));
             deps.add(VersionParser.parseVersionReference("NotEnoughItems@[1.0.5,)"));
-            deps.add(VersionParser.parseVersionReference("EnderStorage@[1.4.6,)"));
-            deps.add(VersionParser.parseVersionReference("ChickenChunks@[1.3.5,)"));
+            deps.add(VersionParser.parseVersionReference("EnderStorage@[1.4.7,)"));
+            deps.add(VersionParser.parseVersionReference("ChickenChunks@[1.3.4,)"));
             deps.add(VersionParser.parseVersionReference("Translocator@[1.1.2,)"));
-            deps.add(VersionParser.parseVersionReference("WR-CBE|Core@[1.4.2,)"));
+            deps.add(VersionParser.parseVersionReference("WR-CBE|Core@[1.4.1,)"));
         }
         return deps;
     }
@@ -62,8 +63,11 @@ public class CodeChickenCoreModContainer extends DummyModContainer
     @Subscribe
     public void init(FMLInitializationEvent event) {
         if (event.getSide().isClient()) {
-            if (config.getTag("checkUpdates").getBooleanValue(true))
-                CCUpdateChecker.updateCheck(getModId());
+            //if (config.getTag("checkUpdates").getBooleanValue(true))
+                //CCUpdateChecker.updateCheck(getModId());
+
+            ClientUtils.enhanceSupportersList("CodeChickenCore");
+
             FMLCommonHandler.instance().bus().register(new CCCEventHandler());
             MinecraftForge.EVENT_BUS.register(new CCCEventHandler());
         }

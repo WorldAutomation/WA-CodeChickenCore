@@ -1,15 +1,18 @@
 package codechicken.core;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
+import codechicken.lib.asm.ObfMapping;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.inventory.Container;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.management.PlayerProfileCache.ProfileEntry;
 import net.minecraft.util.IChatComponent;
 
 public class ServerUtils extends CommonUtils
@@ -19,7 +22,7 @@ public class ServerUtils extends CommonUtils
     }
 
     public static EntityPlayerMP getPlayer(String playername) {
-        return mc().getConfigurationManager().getPlayerByUsername(playername);
+        return mc().getConfigurationManager().func_152612_a(playername);
     }
 
     public static List<EntityPlayerMP> getPlayers() {
@@ -41,7 +44,24 @@ public class ServerUtils extends CommonUtils
         packetSender.sendPacket(player, player.currentWindowId);
         player.openContainer = container;
         player.openContainer.windowId = player.currentWindowId;
-        player.openContainer.onCraftGuiOpened(player);
+        player.openContainer.addCraftingToCrafters(player);
+    }
+
+    private static Field field_152661_c;
+    private static Class<?> c_ProfileEntry;
+    private static Method func_152668_a;
+    static {
+        try {
+            field_152661_c = ReflectionManager.getField(new ObfMapping("net/minecraft/server/management/PlayerProfileCache", "field_152661_c", "[Ljava/util/Map;"));
+            c_ProfileEntry = ServerUtils.class.getClassLoader().loadClass("net.minecraft.server.management.PlayerProfileCache$ProfileEntry");
+            func_152668_a = c_ProfileEntry.getDeclaredMethod(
+                    new ObfMapping("net/minecraft/server/management/PlayerProfileCache$ProfileEntry",
+                            "func_152668_a", "()Lcom/mojang/authlib/GameProfile;").toRuntime().s_name);
+            func_152668_a.setAccessible(true);
+
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static GameProfile getGameProfile(String username) {
@@ -49,19 +69,20 @@ public class ServerUtils extends CommonUtils
         if(player != null)
             return player.getGameProfile();
 
-        //try and access it in the cache without forcing a save
         username = username.toLowerCase(Locale.ROOT);
-        ProfileEntry cachedEntry = (ProfileEntry) mc().getPlayerProfileCache().usernameToProfileEntryMap.get(username);
-        if(cachedEntry != null)
-            return cachedEntry.getGameProfile();
-
-        //load it from the cache
-        return mc().getPlayerProfileCache().getGameProfileForUsername(username);
+        try {//use reflection to bypass saving the game profiles every time we ask the cache for one
+            Object cacheEntry = ((Map) field_152661_c.get(mc().func_152358_ax())).get(username);
+            if(cacheEntry != null)
+                return (GameProfile) func_152668_a.invoke(cacheEntry);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return mc().func_152358_ax().func_152655_a(username);
     }
 
     public static boolean isPlayerOP(String username) {
         GameProfile prof = getGameProfile(username);
-        return prof != null && mc().getConfigurationManager().canSendCommands(prof);
+        return prof != null && mc().getConfigurationManager().func_152596_g(prof);
     }
 
     public static boolean isPlayerOwner(String username) {

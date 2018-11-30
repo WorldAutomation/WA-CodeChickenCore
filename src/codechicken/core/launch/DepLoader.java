@@ -3,13 +3,12 @@ package codechicken.core.launch;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraftforge.fml.common.asm.transformers.ModAccessTransformer;
-import net.minecraftforge.fml.common.versioning.ComparableVersion;
-import net.minecraftforge.fml.relauncher.*;
+import cpw.mods.fml.common.versioning.ComparableVersion;
+import cpw.mods.fml.relauncher.FMLInjectionData;
+import cpw.mods.fml.relauncher.FMLLaunchHandler;
+import cpw.mods.fml.relauncher.IFMLCallHook;
+import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 import net.minecraft.launchwrapper.LaunchClassLoader;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import sun.misc.URLClassPath;
 import sun.net.util.URLUtil;
 
@@ -24,7 +23,6 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.*;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -32,8 +30,6 @@ import java.net.URLConnection;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.List;
-import java.util.jar.Attributes;
-import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -46,9 +42,8 @@ import java.util.zip.ZipFile;
  */
 public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
     private static ByteBuffer downloadBuffer = ByteBuffer.allocateDirect(1 << 23);
-    private static final String owner = "DepLoader";
+    private static final String owner = "CB's DepLoader";
     private static DepLoadInst inst;
-    private static final Logger logger = LogManager.getLogger(owner);
 
     public interface IDownloadDisplay {
         void resetProgress(int sizeGuess);
@@ -253,35 +248,19 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
 
     public static class Dependency
     {
-        /**
-         * Zip file to extract packed dependencies from
-         */
-        public File source;
-        public String repo;
-        public String packed;
+        public String url;
         public VersionedFile file;
-        public String testClass;
-        public boolean coreLib;
 
         public String existing;
         /**
          * Flag set to add this dep to the classpath immediately because it is required for a coremod.
          */
+        public boolean coreLib;
 
-        public Dependency(File source, String repo, String packed, VersionedFile file, String testClass, boolean coreLib) {
-            this.source = source;
-            this.repo = repo;
-            this.packed = packed;
+        public Dependency(String url, VersionedFile file, boolean coreLib) {
+            this.url = url;
             this.file = file;
             this.coreLib = coreLib;
-            this.testClass = testClass;
-        }
-
-        public void set(Dependency dep) {
-            this.source = dep.source;
-            this.repo = dep.repo;
-            this.packed = dep.packed;
-            this.file = dep.file;
         }
     }
 
@@ -294,9 +273,6 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
         private Map<String, Dependency> depMap = new HashMap<String, Dependency>();
         private HashSet<String> depSet = new HashSet<String>();
 
-        private File scanning;
-        private LaunchClassLoader loader = (LaunchClassLoader) DepLoader.class.getClassLoader();
-
         public DepLoadInst() {
             String mcVer = (String) FMLInjectionData.data()[4];
             File mcDir = (File) FMLInjectionData.data()[6];
@@ -307,9 +283,9 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
                 v_modsDir.mkdirs();
         }
 
-        private void addClasspath(File file) {
+        private void addClasspath(String name) {
             try {
-                loader.addURL(file.toURI().toURL());
+                ((LaunchClassLoader) DepLoader.class.getClassLoader()).addURL(new File(v_modsDir, name).toURI().toURL());
             } catch (MalformedURLException e) {
                 throw new RuntimeException(e);
             }
@@ -320,6 +296,7 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
                 return;
 
             try {
+                ClassLoader cl = DepLoader.class.getClassLoader();
                 URL url = mod.toURI().toURL();
                 Field f_ucp = URLClassLoader.class.getDeclaredField("ucp");
                 Field f_loaders = URLClassPath.class.getDeclaredField("loaders");
@@ -328,7 +305,7 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
                 f_loaders.setAccessible(true);
                 f_lmap.setAccessible(true);
 
-                URLClassPath ucp = (URLClassPath) f_ucp.get(loader);
+                URLClassPath ucp = (URLClassPath) f_ucp.get(cl);
                 Closeable loader = ((Map<String, Closeable>) f_lmap.get(ucp)).remove(URLUtil.urlNoFragString(url));
                 if (loader != null) {
                     loader.close();
@@ -341,7 +318,7 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
             if (!mod.delete()) {
                 mod.deleteOnExit();
                 String msg = owner + " was unable to delete file " + mod.getPath() + " the game will now try to delete it on exit. If this dialog appears again, delete it manually.";
-                logger.error(msg);
+                System.err.println(msg);
                 if (!GraphicsEnvironment.isHeadless())
                     JOptionPane.showMessageDialog(null, msg, "An update error has occured", JOptionPane.ERROR_MESSAGE);
 
@@ -349,91 +326,53 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
             }
         }
 
-        private void install(Dependency dep) {
-            popupWindow = (JDialog) downloadMonitor.makeDialog();
-
-            if(!extract(dep))
-                download(dep);
-
-            dep.existing = dep.file.filename;
-            scanDepInfo(new File(v_modsDir, dep.existing));
-        }
-
-        private boolean extract(Dependency dep) {
-            if(dep.packed == null)
-                return false;
-
-            ZipFile zip = null;
-            try {
-                zip = new ZipFile(dep.source);
-                ZipEntry libEntry = zip.getEntry(dep.packed + dep.file.filename);
-                if(libEntry == null)
-                    return false;
-
-                downloadMonitor.updateProgressString("Extracting file %s\n", dep.source.getPath()+'!'+libEntry.toString());
-                logger.info("Extracting file " + dep.source.getPath()+'!'+libEntry.toString());
-
-                download(zip.getInputStream(libEntry), (int) libEntry.getSize(), dep);
-
-                downloadMonitor.updateProgressString("Extraction complete");
-                logger.info("Extraction complete");
-            } catch (Exception e) {
-                installError(e, dep, "extraction");
-            } finally {
-                try {
-                    if(zip != null) zip.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-            return true;
-        }
-
         private void download(Dependency dep) {
+            popupWindow = (JDialog) downloadMonitor.makeDialog();
+            File libFile = new File(v_modsDir, dep.file.filename);
             try {
-                URL libDownload = new URL(dep.repo + dep.file.filename);
+                URL libDownload = new URL(dep.url + '/' + dep.file.filename);
                 downloadMonitor.updateProgressString("Downloading file %s", libDownload.toString());
-                logger.info("Downloading file " + libDownload.toString());
+                System.out.format("Downloading file %s\n", libDownload.toString());
                 URLConnection connection = libDownload.openConnection();
                 connection.setConnectTimeout(5000);
                 connection.setReadTimeout(5000);
                 connection.setRequestProperty("User-Agent", "" + owner + " Downloader");
-                download(connection.getInputStream(), connection.getContentLength(), dep);
+                int sizeGuess = connection.getContentLength();
+                download(connection.getInputStream(), sizeGuess, libFile);
                 downloadMonitor.updateProgressString("Download complete");
-                logger.info("Download complete");
+                System.out.println("Download complete");
+
+                scanDepInfo(libFile);
             } catch (Exception e) {
-                installError(e, dep, "download");
+                libFile.delete();
+                if (downloadMonitor.shouldStopIt()) {
+                    System.err.println("You have stopped the downloading operation before it could complete");
+                    System.exit(1);
+                    return;
+                }
+                downloadMonitor.showErrorDialog(dep.file.filename, dep.url + '/' + dep.file.filename);
+                throw new RuntimeException("A download error occured", e);
             }
         }
 
-        private void installError(Exception e, Dependency dep, String s) {
-            if (downloadMonitor.shouldStopIt()) {
-                logger.error("You have stopped the "+s+" before it could complete");
-                System.exit(1);
-            }
-            downloadMonitor.showErrorDialog(dep.file.filename, dep.repo + '/' + dep.file.filename);
-            throw new RuntimeException(s+" error", e);
-        }
-
-        private void download(InputStream is, int sizeGuess, Dependency dep) throws Exception {
-            File target = new File(v_modsDir, dep.file.filename);
+        private void download(InputStream is, int sizeGuess, File target) throws Exception {
             if (sizeGuess > downloadBuffer.capacity())
                 throw new Exception(String.format("The file %s is too large to be downloaded by " + owner + " - the download is invalid", target.getName()));
 
             downloadBuffer.clear();
 
-            int read, fullLength = 0;
+            int bytesRead, fullLength = 0;
 
             downloadMonitor.resetProgress(sizeGuess);
             try {
                 downloadMonitor.setPokeThread(Thread.currentThread());
-                byte[] buffer = new byte[1024];
-                while ((read = is.read(buffer)) >= 0) {
-                    downloadBuffer.put(buffer, 0, read);
-                    fullLength += read;
-                    if (downloadMonitor.shouldStopIt())
+                byte[] smallBuffer = new byte[1024];
+                while ((bytesRead = is.read(smallBuffer)) >= 0) {
+                    downloadBuffer.put(smallBuffer, 0, bytesRead);
+                    fullLength += bytesRead;
+                    if (downloadMonitor.shouldStopIt()) {
                         break;
-
+                    }
                     downloadMonitor.updateProgress(fullLength);
                 }
                 is.close();
@@ -444,15 +383,30 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
                 // We were interrupted by the stop button. We're stopping now.. clear interruption flag.
                 Thread.interrupted();
                 throw new Exception("Stop");
+            } catch (IOException e) {
+                throw e;
             }
 
-            if (!target.exists())
-                target.createNewFile();
+            try {
+                /*String cksum = generateChecksum(downloadBuffer);
+                if (cksum.equals(validationHash))
+                {*/
+                if (!target.exists())
+                    target.createNewFile();
 
-            downloadBuffer.position(0);
-            FileOutputStream fos = new FileOutputStream(target);
-            fos.getChannel().write(downloadBuffer);
-            fos.close();
+
+                downloadBuffer.position(0);
+                FileOutputStream fos = new FileOutputStream(target);
+                fos.getChannel().write(downloadBuffer);
+                fos.close();
+                /*}
+                else
+                {
+                    throw new RuntimeException(String.format("The downloaded file %s has an invalid checksum %s (expecting %s). The download did not succeed correctly and the file has been deleted. Please try launching again.", target.getName(), cksum, validationHash));
+                }*/
+            } catch (Exception e) {
+                throw e;
+            }
         }
 
         private String checkExisting(Dependency dep) {
@@ -474,12 +428,12 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
 
                 int cmp = vfile.version.compareTo(dep.file.version);
                 if (cmp < 0) {
-                    logger.info("Deleted old version " + f.getName());
+                    System.out.println("Deleted old version " + f.getName());
                     deleteMod(f);
                     return null;
                 }
                 if (cmp > 0) {
-                    logger.info("Warning: version of " + dep.file.name + ", " + vfile.version + " is newer than request " + dep.file.version);
+                    System.err.println("Warning: version of " + dep.file.name + ", " + vfile.version + " is newer than request " + dep.file.version);
                     return f.getName();
                 }
                 return f.getName();//found dependency
@@ -497,62 +451,9 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
         }
 
         private void activateDeps() {
-            for (Dependency dep : depMap.values()) {
-                File file = new File(v_modsDir, dep.existing);
-                if(!searchCoreMod(file) && dep.coreLib)
-                    addClasspath(file);
-            }
-        }
-
-        /**
-         * Looks for FMLCorePlugin attributes and adds to CoreModManager
-         */
-        private boolean searchCoreMod(File coreMod) {
-            JarFile jar = null;
-            Attributes mfAttributes;
-            try {
-                jar = new JarFile(coreMod);
-                if (jar.getManifest() == null)
-                    return false;
-
-                ModAccessTransformer.addJar(jar);
-                mfAttributes = jar.getManifest().getMainAttributes();
-            } catch (IOException ioe) {
-                FMLRelaunchLog.log(Level.ERROR, ioe, "Unable to read the jar file %s - ignoring", coreMod.getName());
-                return false;
-            } finally {
-                try {
-                    if (jar != null) jar.close();
-                } catch (IOException ignored) {}
-            }
-
-            String fmlCorePlugin = mfAttributes.getValue("FMLCorePlugin");
-            if (fmlCorePlugin == null)
-                return false;
-
-            addClasspath(coreMod);
-
-            try {
-                Class<CoreModManager> c = CoreModManager.class;
-                if (!mfAttributes.containsKey(new Attributes.Name("FMLCorePluginContainsFMLMod"))) {
-                    FMLRelaunchLog.finer("Adding %s to the list of known coremods, it will not be examined again", coreMod.getName());
-                    Field f_loadedCoremods = c.getDeclaredField("loadedCoremods");
-                    f_loadedCoremods.setAccessible(true);
-                    ((List)f_loadedCoremods.get(null)).add(coreMod.getName());
-                } else {
-                    FMLRelaunchLog.finer("Found FMLCorePluginContainsFMLMod marker in %s, it will be examined later for regular @Mod instances", coreMod.getName());
-                    Field f_reparsedCoremods = c.getDeclaredField("reparsedCoremods");
-                    f_reparsedCoremods.setAccessible(true);
-                    ((List)f_reparsedCoremods.get(null)).add(coreMod.getName());
-                }
-                Method m_loadCoreMod = c.getDeclaredMethod("loadCoreMod", LaunchClassLoader.class, String.class, File.class);
-                m_loadCoreMod.setAccessible(true);
-                m_loadCoreMod.invoke(null, loader, fmlCorePlugin, coreMod);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-
-            return true;
+            for (Dependency dep : depMap.values())
+                if (dep.coreLib)
+                    addClasspath(dep.existing);
         }
 
         private void loadDeps() {
@@ -574,8 +475,11 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
 
         private void load(Dependency dep) {
             dep.existing = checkExisting(dep);
-            if (dep.existing == null && DepLoader.class.getResource("/" + dep.testClass.replace('.', '/') + ".class") == null)
-                install(dep);
+            if (dep.existing == null)//download dep
+            {
+                download(dep);
+                dep.existing = dep.file.filename;
+            }
         }
 
         private List<File> modFiles() {
@@ -596,15 +500,15 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
 
         private void scanDepInfo(File file) {
             try {
-                scanning = file;
                 ZipFile zip = new ZipFile(file);
-                ZipEntry e = zip.getEntry("dependencies.info");
+                ZipEntry e = zip.getEntry("dependancies.info");
+                if (e == null) e = zip.getEntry("dependencies.info");
                 if (e != null)
                     loadJSon(zip.getInputStream(e));
-
                 zip.close();
             } catch (Exception e) {
-                logger.error("Failed to load dependencies.info from " + file.getName() + " as JSON", e);
+                System.err.println("Failed to load dependencies.info from " + file.getName() + " as JSON");
+                e.printStackTrace();
             }
         }
 
@@ -627,10 +531,11 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
             boolean obfuscated = ((LaunchClassLoader) DepLoader.class.getClassLoader())
                     .getClassBytes("net.minecraft.world.World") == null;
 
-            String repo = node.has("repo") ? node.get("repo").getAsString() : null;
-            String packed = node.has("packed") ? node.get("packed").getAsString() : null;
             String testClass = node.get("class").getAsString();
+            if (DepLoader.class.getResource("/" + testClass.replace('.', '/') + ".class") != null)
+                return;
 
+            String repo = node.get("repo").getAsString();
             String filename = node.get("file").getAsString();
             if (!obfuscated && node.has("dev"))
                 filename = node.get("dev").getAsString();
@@ -642,7 +547,8 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
                 if(node.has("pattern"))
                     pattern = Pattern.compile(node.get("pattern").getAsString());
             } catch (PatternSyntaxException e) {
-                logger.error("Invalid filename pattern: "+node.get("pattern"), e);
+                System.err.println("Invalid filename pattern: "+node.get("pattern"));
+                e.printStackTrace();
             }
             if(pattern == null)
                 pattern = Pattern.compile("(\\w+).*?([\\d\\.]+)[-\\w]*\\.[^\\d]+");
@@ -651,30 +557,24 @@ public class DepLoader implements IFMLLoadingPlugin, IFMLCallHook {
             if (!file.matches())
                 throw new RuntimeException("Invalid filename format for dependency: " + filename);
 
-            addDep(new Dependency(scanning, repo, packed, file, testClass, coreLib));
+            addDep(new Dependency(repo, file, coreLib));
         }
 
         private void addDep(Dependency newDep) {
-            Dependency oldDep = depMap.get(newDep.file.name);
-            if (oldDep == null) {
+            if (mergeNew(depMap.get(newDep.file.name), newDep)) {
                 depMap.put(newDep.file.name, newDep);
                 depSet.add(newDep.file.name);
-                return;
             }
+        }
 
-            //combine newer info from newDep into oldDep
-            oldDep.coreLib |= newDep.coreLib;
-            int cmp = newDep.file.version.compareTo(oldDep.file.version);
-            if (cmp == 1)
-                oldDep.set(newDep);
-            else if(cmp == 0) {
-                if(oldDep.repo == null)
-                    oldDep.repo = newDep.repo;
-                if(oldDep.packed == null) {
-                    oldDep.source = newDep.source;
-                    oldDep.packed = newDep.packed;
-                }
-            }
+        private boolean mergeNew(Dependency oldDep, Dependency newDep) {
+            if (oldDep == null)
+                return true;
+
+            Dependency newest = newDep.file.version.compareTo(oldDep.file.version) > 0 ? newDep : oldDep;
+            newest.coreLib = newDep.coreLib || oldDep.coreLib;
+
+            return newest == newDep;
         }
     }
 

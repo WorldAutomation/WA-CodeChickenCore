@@ -5,7 +5,6 @@ import codechicken.lib.asm.ModularASMTransformer.MethodReplacer;
 import codechicken.lib.asm.ModularASMTransformer.MethodTransformer;
 import codechicken.lib.asm.ModularASMTransformer.MethodWriter;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -19,6 +18,10 @@ import static codechicken.lib.asm.InsnComparator.*;
 
 public class TweakTransformer implements IClassTransformer, Opcodes
 {
+    static {
+        ASMInit.init();
+    }
+
     private static ModularASMTransformer transformer = new ModularASMTransformer();
     private static Map<String, ASMBlock> blocks = ASMReader.loadResource("/assets/codechickencore/asm/tweaks.asm");
     public static ConfigTag tweaks;
@@ -36,7 +39,7 @@ public class TweakTransformer implements IClassTransformer, Opcodes
                     blocks.get("d_environmentallyFriendlyCreepers"), blocks.get("environmentallyFriendlyCreepers")));
         }
 
-        /*if (!tweaks.getTag("softLeafReplace")
+        if (!tweaks.getTag("softLeafReplace")
                 .setComment("If set to false, leaves will only replace air when growing")
                 .getBooleanValue(false)) {
             transformer.add(new MethodWriter(ACC_PUBLIC, new ObfMapping("net/minecraft/block/Block", "canBeReplacedByLeaves", "(Lnet/minecraft/world/IBlockAccess;III)Z"), blocks.get("softLeafReplace")));
@@ -58,7 +61,7 @@ public class TweakTransformer implements IClassTransformer, Opcodes
                     mv.instructions.insert(jlabel, inject.list.list);
                 }
             });
-        }*/
+        }
 
         if (tweaks.getTag("finiteWater")
                 .setComment("If set to true two adjacent water source blocks will not generate a third.")
@@ -67,9 +70,9 @@ public class TweakTransformer implements IClassTransformer, Opcodes
             {
                 @Override
                 public void transform(MethodNode mv) {
-                    InsnListSection key = findOnce(mv.instructions, blocks.get("finiteWater").list);
-                    key.setLast(((JumpInsnNode) key.getLast()).label);
-                    key.remove();
+                    ASMBlock needle = blocks.get("finiteWater");
+                    ASMBlock key = needle.applyLabels(findOnce(mv.instructions, needle.list));
+                    mv.instructions.insertBefore(key.list.getFirst(), new JumpInsnNode(GOTO, key.get("LEND")));
                 }
             });
         }
