@@ -1,5 +1,7 @@
 package codechicken.core.internal;
 
+import codechicken.core.CCUpdateChecker;
+
 import codechicken.core.GuiModListScroll;
 import cpw.mods.fml.client.GuiModList;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -17,7 +19,7 @@ public class CCCEventHandler
     @SubscribeEvent
     public void clientTick(TickEvent.ClientTickEvent event) {
         if(event.phase == Phase.END) {
-            //CCUpdateChecker.tick();
+            CCUpdateChecker.tick();
             renderTime++;
         }
     }
