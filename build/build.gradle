@@ -18,7 +18,7 @@ buildscript {
 apply plugin: 'forge'
 
 group = "codechicken" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
-archivesBaseName = "CodeChickenCore"
+archivesBaseName = "WA-CodeChickenCore"
 
 // Define properties file
 ext.configFile = file "build.properties"
